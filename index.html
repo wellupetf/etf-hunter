@@ -3,218 +3,177 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ETF Hunter | 跨境与本土</title>
+    <title>ETF 猎手 | 调试版</title>
+    <!-- 1. 引入样式库 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
             darkMode: 'class',
             theme: {
                 extend: {
-                    colors: {
-                        gray: { 850: '#1f2937', 900: '#111827', 950: '#030712' }
-                    }
+                    colors: { gray: { 850: '#1f2937', 900: '#111827', 950: '#030712' } }
                 }
             }
         }
     </script>
+    <!-- 2. 引入 Vue 和 Supabase -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
     <style>
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        [v-cloak] { display: none; }
+        [v-cloak] { display: none; } /* 防止Vue未加载时闪烁 */
     </style>
 </head>
 <body class="bg-gray-950 text-gray-100 font-sans antialiased min-h-screen pb-10">
 
+<!-- 挂载点：Vue应用从这里开始渲染 -->
 <div id="app" v-cloak class="max-w-md mx-auto bg-gray-900 min-h-screen shadow-2xl relative border-x border-gray-800">
     
-    <!-- 顶部 -->
+    <!-- 顶部导航 -->
     <header class="sticky top-0 z-50 bg-gray-900/95 backdrop-blur border-b border-gray-800 p-4">
-        <div class="flex justify-between items-center">
-            <h1 class="text-xl font-black italic tracking-tighter bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">
-                ETF HUNTER
-            </h1>
-            <div class="flex gap-2 text-xs font-mono text-gray-500">
-                <span>A股视角</span>
-                <span class="text-gray-700">|</span>
-                <span>去噪工具</span>
-            </div>
-        </div>
-        
+        <h1 class="text-xl font-black italic tracking-tighter bg-gradient-to-r from-indigo-400 to-cyan-400 bg-clip-text text-transparent">
+            ETF HUNTER
+        </h1>
         <!-- 搜索框 -->
         <div class="mt-4 relative">
-            <input v-model="searchQuery" type="text" placeholder="搜代码/名称 (如: 纳指, 300, 513100)" 
-                   class="w-full bg-gray-800 text-white border border-gray-700 rounded-lg py-2.5 px-4 pl-10 focus:outline-none focus:border-indigo-500 transition-colors text-sm placeholder-gray-600">
-            <svg class="w-4 h-4 text-gray-500 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+            <input v-model="searchQuery" type="text" placeholder="搜代码/名称..." 
+                   class="w-full bg-gray-800 text-white border border-gray-700 rounded-lg py-2.5 px-4 focus:outline-none focus:border-indigo-500 text-sm">
         </div>
     </header>
 
+    <!-- 状态提示区 -->
+    <div v-if="loading" class="text-center py-10 text-gray-500 animate-pulse">
+        正在连接数据库...
+    </div>
+    
+    <div v-if="errorMsg" class="p-4 m-4 bg-red-900/30 border border-red-500/50 text-red-200 text-xs rounded">
+        ❌ 错误: {{ errorMsg }}
+        <br>请检查你的 index.html 里是否填了正确的 URL 和 KEY。
+    </div>
+
     <!-- 列表区 -->
-    <div class="p-4 space-y-4">
+    <div v-if="!loading" class="p-4 space-y-4">
         
-        <!-- 每一个 ETF 卡片 -->
-        <div v-for="item in filteredList" :key="item.code" class="bg-gray-800 rounded-xl border border-gray-700/50 shadow-lg overflow-hidden group hover:border-gray-600 transition-all">
-            
-            <!-- 卡片头部：通用信息 -->
-            <div class="px-4 py-3 flex justify-between items-start bg-gray-800/80">
+        <!-- 卡片循环 -->
+        <div v-for="item in filteredList" :key="item.code" class="bg-gray-800 rounded-xl border border-gray-700/50 shadow-lg overflow-hidden p-4">
+            <div class="flex justify-between items-start">
                 <div>
-                    <div class="flex items-center gap-2">
-                        <span class="text-lg font-bold text-gray-100">{{ item.name }}</span>
-                        <!-- 标签区分 -->
-                        <span v-if="item.type === 'cross'" class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20">跨境 QDII</span>
-                        <span v-else class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20">本土 A-Share</span>
+                    <div class="font-bold text-lg">{{ item.name }} <span class="text-xs font-normal text-gray-500">({{ item.code }})</span></div>
+                    <div class="text-xs mt-1 px-2 py-0.5 rounded inline-block" 
+                         :class="item.type === 'cross' ? 'bg-purple-500/10 text-purple-400' : 'bg-blue-500/10 text-blue-400'">
+                        {{ item.type === 'cross' ? '跨境 QDII' : '本土 A股' }}
                     </div>
-                    <div class="text-xs text-gray-500 font-mono mt-0.5">{{ item.code }}</div>
                 </div>
                 <div class="text-right">
-                    <div class="text-lg font-mono font-medium" :class="item.pct_chg >= 0 ? 'text-red-400' : 'text-green-400'">
-                        {{ item.price }}
-                    </div>
-                    <div class="text-xs font-mono" :class="item.pct_chg >= 0 ? 'text-red-400' : 'text-green-400'">
-                        {{ item.pct_chg >= 0 ? '+' : ''}}{{ item.pct_chg }}%
-                    </div>
+                    <div class="text-xl font-mono">{{ item.price }}</div>
                 </div>
             </div>
 
-            <!-- 核心差异化分析区 -->
-            <div class="px-4 pb-4 pt-1">
-                
-                <!-- 场景 A: 跨境 ETF (展示溢价与影子) -->
-                <div v-if="item.type === 'cross'" class="space-y-2">
-                    <!-- 溢价警告条 -->
-                    <div class="flex items-center justify-between p-2 rounded bg-gray-900/50 border border-gray-700/30">
-                        <span class="text-xs text-gray-400">实时溢价率</span>
-                        <div class="flex items-center gap-2">
-                            <span v-if="item.quota_status === 'closed'" class="text-[10px] px-1 rounded bg-red-500/20 text-red-400">暂停申购</span>
-                            <span class="font-mono font-bold text-sm" :class="getPremiumColor(item.premium_rate)">
-                                {{ item.premium_rate > 0 ? '+' : ''}}{{ item.premium_rate }}%
-                            </span>
-                        </div>
-                    </div>
-
-                    <!-- 影子净值逻辑 -->
-                    <div class="flex items-center justify-between text-xs">
-                        <span class="text-gray-500">影子净值 (含期货):</span>
-                        <span class="font-mono text-gray-300">{{ item.shadow_nav }}</span>
-                    </div>
-                    
-                    <!-- 智能点评 -->
-                    <div class="mt-2 text-[10px] p-2 rounded bg-gray-700/20 text-gray-400 leading-relaxed">
-                        <span class="text-indigo-400 font-bold">💡 分析: </span>
-                        <span v-if="item.premium_rate > 3 && item.quota_status === 'closed'">
-                            额度已满且溢价过高，存在大幅回调风险，切勿追高。
-                        </span>
-                        <span v-else-if="item.premium_rate < 0">
-                            当前出现折价，适合日内套利或配置。
-                        </span>
-                        <span v-else>价格处于合理区间，跟随美股走势。</span>
-                    </div>
+            <!-- 数据展示区 -->
+            <div class="mt-3 pt-3 border-t border-gray-700/30 text-sm space-y-1">
+                <div v-if="item.type === 'cross'" class="flex justify-between">
+                    <span class="text-gray-400">溢价率:</span>
+                    <span :class="item.premium_rate > 0 ? 'text-red-400' : 'text-green-400'">{{ item.premium_rate }}%</span>
                 </div>
-
-                <!-- 场景 B: 本土 ETF (展示估值与资金流) -->
-                <div v-else class="space-y-3 pt-1">
-                    
-                    <!-- 1. 资金流向 (核心去噪指标) -->
-                    <div class="flex justify-between items-center bg-gray-900/50 p-2 rounded border border-gray-700/30">
-                        <div class="flex flex-col">
-                            <span class="text-[10px] text-gray-500">主力资金意图</span>
-                            <div class="flex items-center gap-1 mt-0.5">
-                                <span class="text-xs font-bold" 
-                                      :class="item.fund_flow_val.includes('+') ? 'text-red-400' : 'text-green-400'">
-                                    {{ item.fund_flow_val }}
-                                </span>
-                                <!-- 背离信号徽章 -->
-                                <span v-if="item.is_divergence" class="text-[9px] px-1 py-0.5 rounded bg-yellow-500/20 text-yellow-500 border border-yellow-500/30 animate-pulse">
-                                    🔥 底部背离
-                                </span>
-                            </div>
-                        </div>
-                        <div class="text-right flex flex-col items-end">
-                            <span class="text-[10px] text-gray-500">拥挤度</span>
-                            <span class="text-xs font-mono text-gray-300">{{ item.crowdedness }}%</span>
-                        </div>
-                    </div>
-
-                    <!-- 2. 估值温度计 -->
-                    <div>
-                        <div class="flex justify-between text-[10px] text-gray-500 mb-1">
-                            <span>估值分位: {{ item.valuation_percentile }}%</span>
-                            <span :class="getValuationColor(item.valuation_percentile)">
-                                {{ getValuationText(item.valuation_percentile) }}
-                            </span>
-                        </div>
-                        <div class="h-1.5 w-full bg-gray-700 rounded-full overflow-hidden">
-                            <div class="h-full rounded-full transition-all duration-500" 
-                                 :class="getValuationBarColor(item.valuation_percentile)"
-                                 :style="`width: ${item.valuation_percentile}%`">
-                            </div>
-                        </div>
-                    </div>
+                <div v-if="item.type === 'cross'" class="flex justify-between">
+                    <span class="text-gray-400">状态:</span>
+                    <span :class="item.quota_status === 'closed' ? 'text-red-400' : 'text-green-400'">
+                        {{ item.quota_status === 'closed' ? '暂停申购' : '开放' }}
+                    </span>
                 </div>
-
             </div>
         </div>
-        
+
         <!-- 空状态 -->
-        <div v-if="filteredList.length === 0" class="text-center py-10 text-gray-600 text-sm">
-            未找到相关 ETF，试试搜 "300" 或 "纳指"
+        <div v-if="filteredList.length === 0 && !errorMsg" class="text-center py-10 text-gray-600 text-sm">
+            数据库里没有找到数据<br>请去 Supabase 插入一条数据试试
         </div>
 
     </div>
 </div>
 
 <script>
-<!-- 引入 Supabase 官方库 -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-<script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-<script>
     const { createApp, ref, computed, onMounted } = Vue
-
-    // 🔥 填入你的 Supabase 密钥
-    const SUPABASE_URL = 'https://wrlhrwqhxomfjepvzfai.supabase.co' 
-    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndybGhyd3FoeG9tZmplcHZ6ZmFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1MjIyNjIsImV4cCI6MjA4MTA5ODI2Mn0.moNJty0hBJrxXK6j_DfI-hyCuWvLT5xg39tDZb1iLbs'
-    
-    // 修正：这里要把 show 改成 window.supabase
-    // 并且把变量名 supabase 改成 supabaseClient 以免名字冲突
-    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
 
     createApp({
         setup() {
-            const searchQuery = ref('')
-            const assets = ref([]) 
+            // =================================================
+            // 🔥 请在这里填入你的 Supabase 密钥 (保留引号)
+            // =================================================
+            const SUPABASE_URL = 'https://wrlhrwqhxomfjepvzfai.supabase.co' 
+            const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndybGhyd3FoeG9tZmplcHZ6ZmFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1MjIyNjIsImV4cCI6MjA4MTA5ODI2Mn0.moNJty0hBJrxXK6j_DfI-hyCuWvLT5xg39tDZb1iLbs'
+            // =================================================
 
-            const fetchData = async () => {
-                // 注意：这里用 supabaseClient
-                const { data, error } = await supabaseClient
-                    .from('etf_assets')
-                    .select('*')
-                
-                if (error) {
-                    console.error('出错了:', error)
+            const searchQuery = ref('')
+            const assets = ref([])
+            const loading = ref(true)
+            const errorMsg = ref('')
+
+            // 1. 安全地初始化 Supabase 客户端
+            let supabaseClient = null
+            try {
+                if (window.supabase) {
+                    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
                 } else {
-                    assets.value = data
+                    throw new Error('Supabase 库加载失败')
+                }
+            } catch (err) {
+                errorMsg.value = 'Supabase 初始化失败: ' + err.message
+                loading.value = false
+            }
+
+            // 2. 拉取数据函数
+            const fetchData = async () => {
+                // 如果密钥还没填，直接报错提醒
+                if (SUPABASE_URL.includes('https://wrlhrwqhxomfjepvzfai.supabase.co')) {
+                    errorMsg.value = '你还没有在代码里填入 Supabase URL 和 KEY！'
+                    loading.value = false
+                    return
+                }
+
+                try {
+                    const { data, error } = await supabaseClient
+                        .from('etf_assets')
+                        .select('*')
+                    
+                    if (error) throw error
+                    
+                    assets.value = data || []
+                    console.log('数据加载成功:', data)
+                } catch (err) {
+                    console.error(err)
+                    errorMsg.value = '读取数据库失败: ' + err.message
+                } finally {
+                    loading.value = false
                 }
             }
 
+            // 3. 挂载时运行
             onMounted(() => {
-                fetchData()
-                
-                // 开启实时订阅
-                supabaseClient
-                    .channel('etf_realtime')
-                    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'etf_assets' }, payload => {
-                        const index = assets.value.findIndex(x => x.code === payload.new.code)
-                        if (index !== -1) {
-                            assets.value[index] = payload.new
-                        }
-                    })
-                    .subscribe()
+                if (!errorMsg.value) {
+                    fetchData()
+                }
             })
-            
-            // ... (下面的 getPremiumColor 等函数不用变，保持原样) ...
-</script>
+
+            // 搜索过滤
+            const filteredList = computed(() => {
+                if (!searchQuery.value) return assets.value;
+                const q = searchQuery.value.toLowerCase();
+                return assets.value.filter(item => 
+                    (item.name && item.name.toLowerCase().includes(q)) || 
+                    (item.code && item.code.includes(q))
+                )
+            })
+
+            return {
+                searchQuery,
+                filteredList,
+                loading,
+                errorMsg
+            }
+        }
+    }).mount('#app')
 </script>
 
 </body>
