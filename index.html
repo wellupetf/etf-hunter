@@ -163,71 +163,46 @@
 </div>
 
 <script>
-    const { createApp, ref, computed } = Vue
+<!-- 引入 Supabase 官方库 -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script>
+    const { createApp, ref, computed, onMounted } = Vue
+
+    // 🔥 这里必须替换成你自己的 Supabase 密钥！
+    const SUPABASE_URL = 'https://wrlhrwqhxomfjepvzfai.supabase.co' 
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndybGhyd3FoeG9tZmplcHZ6ZmFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1MjIyNjIsImV4cCI6MjA4MTA5ODI2Mn0.moNJty0hBJrxXK6j_DfI-hyCuWvLT5xg39tDZb1iLbs'
+    
+    // 初始化连接
+    const supabase = show.createClient(SUPABASE_URL, SUPABASE_KEY)
 
     createApp({
         setup() {
             const searchQuery = ref('')
+            const assets = ref([]) // 这里的空数组等待数据填充
 
-            // 这里是你的核心资产库
-            // 以后把这部分换成从 Supabase 读取即可
-            const assets = ref([
-                // --- 跨境 ETF 案例 ---
-                {
-                    code: '513100',
-                    name: '纳指ETF',
-                    type: 'cross', // 标记为跨境
-                    price: '1.452',
-                    pct_chg: -0.52,
-                    
-                    // 跨境专属数据
-                    premium_rate: 3.85, // 溢价率
-                    quota_status: 'closed', // 暂停申购
-                    shadow_nav: '1.398', // 影子净值
-                    underlying: 'QQQ'
-                },
-                {
-                    code: '513500',
-                    name: '标普500',
-                    type: 'cross',
-                    price: '1.820',
-                    pct_chg: 0.20,
-                    
-                    premium_rate: 0.15, // 正常溢价
-                    quota_status: 'open',
-                    shadow_nav: '1.817',
-                    underlying: 'SPY'
-                },
-
-                // --- 本土 ETF 案例 ---
-                {
-                    code: '510300',
-                    name: '沪深300ETF',
-                    type: 'local', // 标记为本土
-                    price: '3.521',
-                    pct_chg: -1.20, // 价格在跌
-                    
-                    // 本土专属数据
-                    valuation_percentile: 18, // 估值极低
-                    fund_flow_val: '+12.5亿', // 份额大增
-                    is_divergence: true, // 触发背离信号 (抄底)
-                    crowdedness: 15 // 拥挤度低
-                },
-                {
-                    code: '512480',
-                    name: '半导体ETF',
-                    type: 'local',
-                    price: '0.850',
-                    pct_chg: 2.10,
-                    
-                    valuation_percentile: 85, // 估值高
-                    fund_flow_val: '-3.2亿', // 资金流出
-                    is_divergence: false,
-                    crowdedness: 42 // 拥挤度过高 (危险)
+            // 1. 定义去数据库拿数据的动作
+            const fetchData = async () => {
+                // 读 etf_assets 表的所有数据
+                const { data, error } = await supabase
+                    .from('etf_assets')
+                    .select('*')
+                
+                if (error) {
+                    console.error('出错了:', error)
+                    alert('读取数据库失败，请检查控制台')
+                } else {
+                    console.log('成功拿到数据:', data)
+                    assets.value = data // 把真数据塞给页面
                 }
-            ])
+            }
 
-            // 样式辅助函数
+            // 2. 页面一打开，就执行 fetchData
+            onMounted(() => {
+                fetchData()
+            })
+
+            // --- 下面是之前的样式逻辑，保持不变 ---
             const getPremiumColor = (val) => {
                 if (val > 3) return 'text-red-500';
                 if (val < 0) return 'text-green-500';
@@ -252,7 +227,6 @@
                 return '⚖️ 合理区间';
             }
 
-            // 搜索逻辑
             const filteredList = computed(() => {
                 if (!searchQuery.value) return assets.value;
                 const q = searchQuery.value.toLowerCase();
@@ -272,6 +246,7 @@
             }
         }
     }).mount('#app')
+</script>
 </script>
 
 </body>
