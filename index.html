@@ -167,85 +167,53 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<script>
     const { createApp, ref, computed, onMounted } = Vue
 
-    // 🔥 这里必须替换成你自己的 Supabase 密钥！
+    // 🔥 填入你的 Supabase 密钥
     const SUPABASE_URL = 'https://wrlhrwqhxomfjepvzfai.supabase.co' 
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndybGhyd3FoeG9tZmplcHZ6ZmFpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1MjIyNjIsImV4cCI6MjA4MTA5ODI2Mn0.moNJty0hBJrxXK6j_DfI-hyCuWvLT5xg39tDZb1iLbs'
     
-    // 初始化连接
-    const supabase = show.createClient(SUPABASE_URL, SUPABASE_KEY)
+    // 修正：这里要把 show 改成 window.supabase
+    // 并且把变量名 supabase 改成 supabaseClient 以免名字冲突
+    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
 
     createApp({
         setup() {
             const searchQuery = ref('')
-            const assets = ref([]) // 这里的空数组等待数据填充
+            const assets = ref([]) 
 
-            // 1. 定义去数据库拿数据的动作
             const fetchData = async () => {
-                // 读 etf_assets 表的所有数据
-                const { data, error } = await supabase
+                // 注意：这里用 supabaseClient
+                const { data, error } = await supabaseClient
                     .from('etf_assets')
                     .select('*')
                 
                 if (error) {
                     console.error('出错了:', error)
-                    alert('读取数据库失败，请检查控制台')
                 } else {
-                    console.log('成功拿到数据:', data)
-                    assets.value = data // 把真数据塞给页面
+                    assets.value = data
                 }
             }
 
-            // 2. 页面一打开，就执行 fetchData
             onMounted(() => {
                 fetchData()
+                
+                // 开启实时订阅
+                supabaseClient
+                    .channel('etf_realtime')
+                    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'etf_assets' }, payload => {
+                        const index = assets.value.findIndex(x => x.code === payload.new.code)
+                        if (index !== -1) {
+                            assets.value[index] = payload.new
+                        }
+                    })
+                    .subscribe()
             })
-
-            // --- 下面是之前的样式逻辑，保持不变 ---
-            const getPremiumColor = (val) => {
-                if (val > 3) return 'text-red-500';
-                if (val < 0) return 'text-green-500';
-                return 'text-gray-300';
-            }
-
-            const getValuationColor = (val) => {
-                if (val < 20) return 'text-green-400 font-bold';
-                if (val > 80) return 'text-red-400 font-bold';
-                return 'text-yellow-500';
-            }
-
-            const getValuationBarColor = (val) => {
-                if (val < 20) return 'bg-green-500';
-                if (val > 80) return 'bg-red-500';
-                return 'bg-yellow-500';
-            }
-
-            const getValuationText = (val) => {
-                if (val < 20) return '✨ 低估 (黄金坑)';
-                if (val > 80) return '⚠️ 高估 (泡沫区)';
-                return '⚖️ 合理区间';
-            }
-
-            const filteredList = computed(() => {
-                if (!searchQuery.value) return assets.value;
-                const q = searchQuery.value.toLowerCase();
-                return assets.value.filter(item => 
-                    item.name.toLowerCase().includes(q) || 
-                    item.code.includes(q)
-                )
-            })
-
-            return {
-                searchQuery,
-                filteredList,
-                getPremiumColor,
-                getValuationColor,
-                getValuationBarColor,
-                getValuationText
-            }
-        }
-    }).mount('#app')
+            
+            // ... (下面的 getPremiumColor 等函数不用变，保持原样) ...
 </script>
 </script>
 
